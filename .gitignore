@@ -1,1 +1,4 @@
 /poetry.lock
+*.gv.csv
+*.gv
+*.gv.pdf

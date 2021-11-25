@@ -78,6 +78,7 @@ This was a quick hack at a GUI. If this is going to be more useful, we have work
 * [ ] Document existing functionality and How-To.
 * [ ] Clean up event handling and event definitions.
 * [ ] Clean up artifact output (specifically directory choice).
+* [ ] For init of `Graph`: allow `edge_type` and `directed` in `entity_pairs`.
 * [ ] Allow description and metadata on `VertexEntity`.
 * [ ] Search over description and metadata, too.
 * [ ] If a central `VertexEntity` is defined, also fuzzy match over description and metadata.

@@ -41,7 +41,7 @@ def _load(ff) -> Tuple[Graph, Optional[VertexType]]:
         vertex_id = r["vertex_id"]
         vertex_name = r.get("vertex_name")
         if not central_vertex_id and (
-            vertex_name == "CENTRAL" or bool(r.get("central_vertex")) == vertex_id
+            vertex_name == "CENTRAL" or bool(r.get("central_vtx_type")) == vertex_id
         ):
             central_vertex_id = vertex_id
         if vertex_id not in vertexs:
@@ -53,7 +53,7 @@ def _load(ff) -> Tuple[Graph, Optional[VertexType]]:
         # ADD THIS entity.
         vertex_entity = r["entity"]
         if not vertex_entity:
-            logger.error("invalid vertex entity", vertex_entity, vertex_id, vertex_name)
+            logger.error("invalid vtx_type entity", vertex_entity, vertex_id, vertex_name)
         gnf = vertexs[vertex_id].add_entity(vertex_entity)
 
         # ADD RELATED ENTITY.
@@ -84,7 +84,7 @@ def _load(ff) -> Tuple[Graph, Optional[VertexType]]:
             )
 
     # FINAL CENTRALITY UPDATE.
-    # This is because we could create a vertex before we have a chance to see centrality.
+    # This is because we could create a vtx_type before we have a chance to see centrality.
     central_vertex: Optional[VertexType] = vertexs.get(central_vertex_id)
     if central_vertex_id:
         for n_id in vertexs:

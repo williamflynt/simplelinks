@@ -10,17 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 class VertexEntity:
-    def __init__(self, vertex, entity: str):
-        if entity not in vertex.raw_entities:
+    def __init__(self, vtx_type, entity: str):
+        if entity not in vtx_type.raw_entities:
             raise AttributeError(
-                f"vertex '{vertex.vertex_id}' does not have entity '{entity}'"
+                f"vtx_type '{vtx_type.vertex_id}' does not have entity '{entity}'"
             )
-        self.vertex = vertex
+        self.vtx_type = vtx_type
         self.entity = entity
 
     @property
     def key(self) -> str:
-        return f"{self.entity}.{self.vertex.vertex_id}"
+        return f"{self.entity}.{self.vtx_type.vertex_id}"
 
     def __eq__(self, other):
         if not hasattr(other, "key"):
@@ -35,7 +35,7 @@ class VertexEntity:
 
 
 class VertexType:
-    """A vertex in our Graph, containing a collection of VertexEntity."""
+    """A vtx_type in our Graph, containing a collection of VertexEntity."""
 
     def __init__(
         self,
@@ -77,9 +77,9 @@ class VertexType:
 
     @classmethod
     def _make_id(cls) -> str:
-        """Make a random vertex ID."""
+        """Make a random vtx_type ID."""
         r_str = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
-        return f"vertex-{r_str}"
+        return f"vtx_type-{r_str}"
 
     def __bool__(self):
         return True
@@ -207,8 +207,8 @@ class EdgeCollection:
         """Return a dictionary of VertexType -> the entities that have entity_pairs here."""
         d = defaultdict(list)
         for r in self.edges:
-            d[r.from_.vertex].append(r.from_)
-            d[r.to_.vertex].append(r.to_)
+            d[r.from_.vtx_type].append(r.from_)
+            d[r.to_.vtx_type].append(r.to_)
         return d
 
     def _add(self, r: Edge) -> None:
@@ -310,13 +310,13 @@ class Graph:
 
     def __init__(
         self,
-        *vertexs: VertexType,
+        *vtx_types: VertexType,
         entity_pairs: List[Tuple[VertexEntity, VertexEntity]] = None,
     ) -> None:
         """
-        Create a new instance of Graph with the specified vertexs and entity_pairs.
+        Create a new instance of Graph with the specified vtx_types and entity_pairs.
         """
-        self.vertexs = list(vertexs)
+        self.vtx_types = list(vtx_types)
         self.edges = EdgeCollection()
         if entity_pairs:
             for r in entity_pairs:
@@ -339,13 +339,13 @@ class Graph:
     def add_edges_central(
         self,
         *groups: List[VertexEntity],
-        central_vertex: VertexType,
+        central_vtx_type: VertexType,
         edge_type: str = None,
     ):
         """
         Create N-M new GraphEdges.
 
-        Only create entity_pairs TO the central_vtx_type vertex FROM other groups.
+        Only create entity_pairs TO the central_vtx_type vtx_type FROM other groups.
 
         This requires groups to be pre-grouped by VertexType.
 
@@ -369,26 +369,26 @@ class Graph:
             x, y = pair
             if not x or not y:
                 continue
-            if x[0].vertex != central_vertex and y[0].vertex != central_vertex:
+            if x[0].vtx_type != central_vtx_type and y[0].vtx_type != central_vtx_type:
                 continue
-            if x[0].vertex == y[0].vertex:
+            if x[0].vtx_type == y[0].vtx_type:
                 continue
             central, non = y, x
-            if x[0].vertex == central_vertex:
+            if x[0].vtx_type == central_vtx_type:
                 central, non = x, y
             c_vertex = None  # For pre-grouping testing.
             n_vertex = None  # For pre-grouping testing.
             n_checked_flag = False
             for c in central:
                 if c_vertex is None:
-                    c_vertex = c.vertex
-                if c_vertex != c.vertex:
+                    c_vertex = c.vtx_type
+                if c_vertex != c.vtx_type:
                     raise ValueError("groups must contain only one VertexType")
                 for n in non:
                     if n_checked_flag is False:
                         if n_vertex is None:
-                            n_vertex = n.vertex
-                        if n_vertex != n.vertex:
+                            n_vertex = n.vtx_type
+                        if n_vertex != n.vtx_type:
                             raise ValueError("groups must contain only one VertexType")
                     if c == n:
                         continue
@@ -410,20 +410,22 @@ class Graph:
         self.edges.delete_by_id(*edge_ids)
 
     def write(self, central_id: str = None) -> None:
-        """Write the graph as DOT and CSV. Honor an optional central_vtx_type VertexType."""
+        """
+        Write the graph as DOT and CSV. Honor an optional central_vtx_type VertexType.
+        """
         dot = g.Graph(comment="Graph")
-        for n in self.vertexs:
+        for n in self.vtx_types:
             dot.node(
                 n.vertex_id, n.name.upper(), color="dodgerblue", fontcolor="dodgerblue3"
             )
         for r in self.edges.edges:
             dot.node(r.to_.key, f"{r.to_.entity}", color="gray28", fontcolor="gray14")
-            dot.edge(r.to_.vertex.vertex_id, r.to_.key, color="dodgerblue")
+            dot.edge(r.to_.vtx_type.vertex_id, r.to_.key, color="dodgerblue")
 
             dot.node(
                 r.from_.key, f"{r.from_.entity}", color="gray28", fontcolor="gray14"
             )
-            dot.edge(r.from_.vertex.vertex_id, r.from_.key, color="dodgerblue")
+            dot.edge(r.from_.vtx_type.vertex_id, r.from_.key, color="dodgerblue")
 
             dot.edge(
                 r.from_.key,
@@ -438,11 +440,11 @@ class Graph:
         fn = dot.render(f"out/{self._uid}-graph-mapping.gv")
         logger.info(fn)
         # Render a CSV for easy entity understanding.
-        with open(f"out/{self._uid}-all_entities.csv", "w") as f:
+        with open(f"out/{self._uid}-all_entities.gv.csv", "w") as f:
             f.write(
                 "entity,vertex_name,vertex_id,vertex_central,edge_type,directed,entity2,vertex_name2,vertex_id2"
             )
-            for vertex in self.vertexs:
+            for vertex in self.vtx_types:
                 central = vertex.vertex_id == central_id
                 for entity in vertex.entities:
                     edges = self.edges.find_by_attrs(from_=entity)
@@ -455,7 +457,7 @@ class Graph:
                     for r in edges:
                         f.write("\n")
                         f.write(
-                            f"{entity.entity},{vertex.name},{vertex.vertex_id},{central},{r.edge_type or ''},{r.directed},{r.to_.entity},{r.to_.vertex.name},{r.to_.vertex.vertex_id}"
+                            f"{entity.entity},{vertex.name},{vertex.vertex_id},{central},{r.edge_type or ''},{r.directed},{r.to_.entity},{r.to_.vtx_type.name},{r.to_.vtx_type.vertex_id}"
                         )
 
     def _add_edges(

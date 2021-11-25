@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 from typing import Any, Iterable, List, Optional, Tuple
 
 import PySimpleGUI as sg
@@ -7,6 +7,7 @@ from fuzzywuzzy import fuzz
 from load import load
 from models import Graph, VertexType, VertexEntity
 
+BUTTON_AUTOMATCH = "-BUTTON-AUTOMATCH-"
 BUTTON_LINK = "-BUTTON-LINK-"
 BUTTON_REMOVE = "-BUTTON-REMOVE-"
 BUTTON_SAVE = "-BUTTON-SAVE-"
@@ -15,7 +16,7 @@ CHECKBOX_WRITE = "-CHECKBOX-WRITE-"
 
 LISTBOX_LEFT = "-LISTBOX-LEFT-"
 LISTBOX_RIGHT = "-LISTBOX-RIGHT-"
-LISTBOX_RELS = "-LISTBOX-RELS-"
+LISTBOX_EDGES = "-LISTBOX-EDGES-"
 
 PREFIX_CHECKBOX = "-CHECKBOX-"
 PREFIX_INPUT = "-INPUT-"
@@ -69,7 +70,7 @@ class ListboxHolder:
     # Is this designated the "central" VertexType? (GUI specific, not a data thing)
     central: bool
 
-    # The vertex this listbox represents.
+    # The vtx_type this listbox represents.
     vertex: VertexType
 
     # The rows making up the sg.Column in this listbox.
@@ -86,7 +87,7 @@ class ListboxHolder:
     filter_edge_selected: str
 
     # The key for the checkbox toggling sympathetic fuzzy filter on selected items
-    # in the central_vtx_type vertex (if exists).
+    # in the central_vtx_type vtx_type (if exists).
     sort_fuzzy_central: str
 
     def __iter__(self):
@@ -179,7 +180,7 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
     window.refresh()
     while True:
         # Update the "entities" in our edges listbox "VertexType".
-        rel_lb = boxes.get(LISTBOX_RELS)
+        rel_lb = boxes.get(LISTBOX_EDGES)
         if rel_lb:
             rel_lb.vertex = namedtuple("mockvertex", "entities")(m.edges)
 
@@ -194,10 +195,13 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
         # If it's at least two, we can link entities.
         linkable = sum([int(bool(values.get(x.key))) for x in boxes.boxes]) >= 2
 
+        if event == BUTTON_AUTOMATCH:
+            _automatch(m)
+            _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
         if event == KEY_ESCAPE:
             values = _deselect_all_listbox(window, boxes.boxes, values)
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
-        if event in boxes.keys:
+        if event in boxes.keys and event != LISTBOX_EDGES:
             disabled = True
             if linkable:
                 disabled = False
@@ -210,31 +214,31 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
             _set_filtered_values(window, event, boxes, m, values)
         if event in ffc_events:
             _set_filtered_values(window, event, boxes, m, values)
-        if event == LISTBOX_RELS:
-            vals = values.get(LISTBOX_RELS)
+        if event == LISTBOX_EDGES:
+            vals = values.get(LISTBOX_EDGES)
             if vals:
-                values = _deselect_all_listbox(window, boxes, values, LISTBOX_RELS)
+                values = _deselect_all_listbox(window, boxes, values, LISTBOX_EDGES)
                 window[BUTTON_LINK].update(disabled=True)
             window[BUTTON_REMOVE].update(disabled=not vals)
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
         if event in (BUTTON_LINK, "\r", KEY_ENTER, QT_ENTER_KEY1, QT_ENTER_KEY2):
             if linkable:
-                grouped = _grouped_entities(boxes, values, LISTBOX_RELS)
+                grouped = _grouped_entities_boxes(boxes, values, LISTBOX_EDGES)
                 if boxes.central and values.get(boxes.central.key):
-                    m.add_edges_central(*grouped, central_vertex=central_vtx_type)
+                    m.add_edges_central(*grouped, central_vtx_type=central_vtx_type)
                 else:
                     m.add_edges(*grouped)
                 values = _deselect_all_listbox(window, boxes, values)
-                window[LISTBOX_RELS].update(values=m.edges)
+                window[LISTBOX_EDGES].update(values=m.edges)
                 window[BUTTON_LINK].update(disabled=True)
                 if values[CHECKBOX_WRITE]:
                     m.write()
                 _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
         if event in [BUTTON_REMOVE, KEY_DELETE]:
-            vals = values.get(LISTBOX_RELS)
+            vals = values.get(LISTBOX_EDGES)
             if vals:
                 m.remove_edge(*[x.edge_id for x in vals])
-            window[LISTBOX_RELS].update(values=m.edges)
+            window[LISTBOX_EDGES].update(values=m.edges)
             if values[CHECKBOX_WRITE]:
                 m.write()
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
@@ -249,6 +253,37 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
 
 
 # --- HELPERS ---
+
+
+def _automatch(
+    m: Graph, central_vtx_type: Optional[VertexType] = None, edge_type: str = "auto"
+) -> None:
+    """
+    Automatically match VertexEntity across VertexTypes by name.
+
+    Creates an undirected Edge.
+    """
+    if len(m.vtx_types) < 2:
+        # We won't support self-linking here.
+        return
+
+    # Group VertexEntity by name.
+    e_map = defaultdict(set)
+    for v in m.vtx_types:
+        for e in v.entities:
+            e_map[e.entity].add(e)
+
+    # Create the edges one by one, using a central VertexType if specified.
+    for e, items in e_map.items():
+        if len(items) < 2:
+            continue
+        groups = _grouped_entities(*items)
+        if central_vtx_type and central_vtx_type in items:
+            m.add_edges_central(
+                *groups, central_vtx_type=central_vtx_type, edge_type=edge_type
+            )
+        else:
+            m.add_edges(*groups, edge_type=edge_type)
 
 
 def _deselect_all_listbox(
@@ -294,7 +329,15 @@ def _fuzzy_match_str(x: VertexEntity, *any_of: str) -> int:
     return m
 
 
-def _grouped_entities(
+def _grouped_entities(*vtx_entities: VertexEntity) -> List[List[VertexEntity]]:
+    """Group some VertexEntity objects by VertexType."""
+    d = defaultdict(list)
+    for e in vtx_entities:
+        d[e.vtx_type].append(e)
+    return list(d.values())
+
+
+def _grouped_entities_boxes(
     boxes: Iterable[ListboxHolder], values: dict, *excludes: str
 ) -> List[List[VertexEntity]]:
     """Return a list of VertexEntity in lists by VertexType."""
@@ -317,7 +360,7 @@ def _set_filtered_values(
     """
     if event == EVENT_UPDATE_ALL:
         for b in boxes:
-            # Don't pass the key, because the `central_vtx_type` vertex (if it exists)
+            # Don't pass the key, because the `central_vtx_type` vtx_type (if it exists)
             # will make us do almost double the work.
             _set_filtered_values(window, b.searcher, boxes, m, values)
         return
@@ -360,7 +403,7 @@ def _set_filtered_values(
     window[box.counter].update(value=str(len(selected_entities)))
 
     if box.central and event == box.key:
-        # If we updated the central_vtx_type vertex, we need to filter all the others that
+        # If we updated the central_vtx_type vtx_type, we need to filter all the others that
         # have the filtering option selected.
         to_update = [
             b
@@ -377,7 +420,7 @@ def _window_init(
     m: Graph, central_vtx_type: Optional[VertexType]
 ) -> Tuple[sg.Window, ListboxCollection]:
     boxes = ListboxCollection()
-    for vertex in m.vertexs:
+    for vertex in m.vtx_types:
         lb_key = f"{PREFIX_LISTBOX}{vertex.vertex_id}-"
         is_central = central_vtx_type and vertex.vertex_id == central_vtx_type.vertex_id
         lb = ListboxHolder(
@@ -425,14 +468,14 @@ def _window_init(
         boxes.add(lb)
 
     edge_lb = ListboxHolder(
-        LISTBOX_RELS,
+        LISTBOX_EDGES,
         False,
         namedtuple("mockvertex", "entities")(m.edges),
         [],
-        f"{PREFIX_COUNTER}{LISTBOX_RELS}",
-        f"{PREFIX_INPUT}{LISTBOX_RELS}",
-        f"{PREFIX_CHECKBOX}{LISTBOX_RELS}{SUFFIX_FILTER}",
-        f"{PREFIX_CHECKBOX}{LISTBOX_RELS}{SUFFIX_FUZZY}",
+        f"{PREFIX_COUNTER}{LISTBOX_EDGES}",
+        f"{PREFIX_INPUT}{LISTBOX_EDGES}",
+        f"{PREFIX_CHECKBOX}{LISTBOX_EDGES}{SUFFIX_FILTER}",
+        f"{PREFIX_CHECKBOX}{LISTBOX_EDGES}{SUFFIX_FUZZY}",
     )
     edge_col = [
         [sg.Text("edges"), sg.Text("0", key=edge_lb.counter)],
@@ -443,7 +486,7 @@ def _window_init(
                 select_mode=sg.LISTBOX_SELECT_MODE_MULTIPLE,
                 size=(60, HEIGHT_LISTBOX_BASE),
                 enable_events=True,
-                key=LISTBOX_RELS,
+                key=LISTBOX_EDGES,
             )
         ],
         [
@@ -479,6 +522,7 @@ def _window_init(
             sg.Button("Remove", key=BUTTON_REMOVE, disabled=True),
             sg.Button("Save", key=BUTTON_SAVE, disabled=True),
             sg.Checkbox("Save on updates", default=True, key=CHECKBOX_WRITE),
+            sg.Button("Auto Match", key=BUTTON_AUTOMATCH, disabled=False),
         ],
     ]
 
