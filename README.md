@@ -1,6 +1,6 @@
 # SimpleLinks 🖇
 
-An embarrassingly naive GUI that powers embarrassingly naive graph construction.
+An embarrassingly naive GUI that powers embarrassingly naive graph construction, for awesome humans.
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white) 
 
