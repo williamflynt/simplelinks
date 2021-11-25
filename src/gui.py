@@ -8,6 +8,8 @@ from load import load
 from models import Graph, VertexType, VertexEntity
 
 BUTTON_AUTOMATCH = "-BUTTON-AUTOMATCH-"
+# Delete edges to same vtx type and entity.
+BUTTON_DELETE_SELF_REF = "-BUTTON-DELETE-SELF-REF-"
 BUTTON_LINK = "-BUTTON-LINK-"
 BUTTON_REMOVE = "-BUTTON-REMOVE-"
 BUTTON_SAVE = "-BUTTON-SAVE-"
@@ -198,6 +200,11 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
         if event == BUTTON_AUTOMATCH:
             _automatch(m)
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
+        if event == BUTTON_DELETE_SELF_REF:
+            m.edges.delete_self_ref()
+            _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
+            if values[CHECKBOX_WRITE]:
+                m.write(central_vtx_type)
         if event == KEY_ESCAPE:
             values = _deselect_all_listbox(window, boxes.boxes, values)
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
@@ -232,18 +239,19 @@ def start(m: Graph, central_vtx_type: Optional[VertexType] = None) -> None:
                 window[LISTBOX_EDGES].update(values=m.edges)
                 window[BUTTON_LINK].update(disabled=True)
                 if values[CHECKBOX_WRITE]:
-                    m.write()
+                    m.write(m.write(central_vtx_type))
                 _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
         if event in [BUTTON_REMOVE, KEY_DELETE]:
             vals = values.get(LISTBOX_EDGES)
             if vals:
                 m.remove_edge(*[x.edge_id for x in vals])
+                values = _deselect_all_listbox(window, boxes, values)
             window[LISTBOX_EDGES].update(values=m.edges)
             if values[CHECKBOX_WRITE]:
-                m.write()
+                m.write(m.write(central_vtx_type))
             _set_filtered_values(window, EVENT_UPDATE_ALL, boxes, m, values)
         if event == BUTTON_SAVE:
-            m.write()
+            m.write(m.write(central_vtx_type))
 
         window[BUTTON_SAVE].update(disabled=bool(len(m.edges) == 0))
 
@@ -274,6 +282,7 @@ def _automatch(
             e_map[e.entity].add(e)
 
     # Create the edges one by one, using a central VertexType if specified.
+    m.edges.sumhash_sensitive = True
     for e, items in e_map.items():
         if len(items) < 2:
             continue
@@ -284,6 +293,7 @@ def _automatch(
             )
         else:
             m.add_edges(*groups, edge_type=edge_type)
+    m.edges.sumhash_sensitive = False
 
 
 def _deselect_all_listbox(
@@ -330,7 +340,7 @@ def _fuzzy_match_str(x: VertexEntity, *any_of: str) -> int:
 
 
 def _grouped_entities(*vtx_entities: VertexEntity) -> List[List[VertexEntity]]:
-    """Group some VertexEntity objects by VertexType."""
+    """Group VertexEntity objects by VertexType."""
     d = defaultdict(list)
     for e in vtx_entities:
         d[e.vtx_type].append(e)
@@ -523,6 +533,9 @@ def _window_init(
             sg.Button("Save", key=BUTTON_SAVE, disabled=True),
             sg.Checkbox("Save on updates", default=True, key=CHECKBOX_WRITE),
             sg.Button("Auto Match", key=BUTTON_AUTOMATCH, disabled=False),
+            sg.Button(
+                "Delete Self-Ref Edges", key=BUTTON_DELETE_SELF_REF, disabled=False
+            ),
         ],
     ]
 

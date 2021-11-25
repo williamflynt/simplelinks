@@ -53,7 +53,9 @@ def _load(ff) -> Tuple[Graph, Optional[VertexType]]:
         # ADD THIS entity.
         vertex_entity = r["entity"]
         if not vertex_entity:
-            logger.error("invalid vtx_type entity", vertex_entity, vertex_id, vertex_name)
+            logger.error(
+                "invalid vtx_type entity", vertex_entity, vertex_id, vertex_name
+            )
         gnf = vertexs[vertex_id].add_entity(vertex_entity)
 
         # ADD RELATED ENTITY.
@@ -72,7 +74,8 @@ def _load(ff) -> Tuple[Graph, Optional[VertexType]]:
             gnf2 = n2.add_entity(n2_entity)
 
             # MAKE EDGE TUPLE.
-            directed = bool(r.get("directed", False))
+            dv = r.get("directed")
+            directed = dv is not None and str(dv).lower() != "false"
             edges.append(
                 Edge(
                     gnf,
